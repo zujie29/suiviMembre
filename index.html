@@ -1,0 +1,715 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f172a">
+
+  <title>Suivi Clients — Gestion</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  >
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+
+      <div class="brand">
+        <div class="brand-logo">S</div>
+        <div class="brand-text">
+          <h2>Suivi Membres</h2>
+          <span>Gestion & terrain</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <span class="sidebar-label">MENU PRINCIPAL</span>
+
+        <nav class="navigation">
+
+          <button class="nav-item active" data-page="dashboard">
+            <span class="nav-icon">▦</span>
+            <span>Tableau de bord</span>
+          </button>
+
+          <button class="nav-item" data-page="clients">
+            <span class="nav-icon">♙</span>
+            <span>Membres</span>
+          </button>
+
+          <button class="nav-item" data-page="map">
+            <span class="nav-icon">◎</span>
+            <span>Carte géographique</span>
+          </button>
+
+          <button class="nav-item" data-page="visits">
+            <span class="nav-icon">▤</span>
+            <span>Historique des visites</span>
+          </button>
+
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-status">
+          <span class="status-indicator"></span>
+          <div>
+            <strong>Mode hors ligne</strong>
+            <small>Données enregistrées localement</small>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+      <!-- TOPBAR -->
+      <header class="topbar">
+
+        <div class="topbar-left">
+          <button class="menu-toggle" id="menuToggle" aria-label="Menu">
+            ☰
+          </button>
+
+          <div>
+            <span class="breadcrumb">Application /</span>
+            <h1 id="pageTitle">Tableau de bord</h1>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+
+          <label for="importFile" class="btn btn-secondary">
+            ↓ Importer ZIP
+          </label>
+          <input
+            type="file"
+            id="importFile"
+            accept=".zip"
+            hidden
+          >
+
+          <button id="exportButton" class="btn btn-secondary">
+            ↑ Exporter ZIP
+          </button>
+
+          <button id="newClientButton" class="btn btn-primary">
+            + Nouveau Membre
+          </button>
+
+        </div>
+
+      </header>
+
+      <!-- CONTENT -->
+      <div class="content-area">
+
+        <!-- DASHBOARD -->
+        <section class="page active" id="dashboard">
+
+          <div class="page-heading">
+            <div>
+              <h2>Vue d'ensemble</h2>
+              <p>Suivez vos activités et vos clients en un seul endroit.</p>
+            </div>
+          </div>
+
+          <div class="stats-grid">
+
+            <article class="stat-card">
+              <div class="stat-icon purple">♙</div>
+              <div>
+                <span>Total clients</span>
+                <h3 id="totalClients">0</h3>
+                <small>Clients enregistrés</small>
+              </div>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-icon green">✓</div>
+              <div>
+                <span>Clients actifs</span>
+                <h3 id="activeClients">0</h3>
+                <small>Clients suivis</small>
+              </div>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-icon orange">▤</div>
+              <div>
+                <span>Total visites</span>
+                <h3 id="totalVisits">0</h3>
+                <small>Visites enregistrées</small>
+              </div>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-icon blue">◎</div>
+              <div>
+                <span>Clients localisés</span>
+                <h3 id="locatedClients">0</h3>
+                <small>Positions GPS disponibles</small>
+              </div>
+            </article>
+
+          </div>
+
+          <div class="dashboard-grid">
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Clients récents</h3>
+                  <p>Derniers clients enregistrés</p>
+                </div>
+
+                <button class="text-button" data-page="clients">
+                  Voir tous →
+                </button>
+              </div>
+
+              <div id="recentClients" class="recent-list">
+                <div class="empty-state">
+                  Aucun client enregistré.
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Dernières visites</h3>
+                  <p>Activité récente</p>
+                </div>
+
+                <button class="text-button" data-page="visits">
+                  Voir tout →
+                </button>
+              </div>
+
+              <div id="recentVisits" class="recent-list">
+                <div class="empty-state">
+                  Aucune visite enregistrée.
+                </div>
+              </div>
+            </article>
+
+          </div>
+
+        </section>
+
+        <!-- CLIENTS -->
+        <section class="page" id="clients">
+
+          <div class="page-heading">
+            <div>
+              <h2>Gestion des membres</h2>
+              <p>Consultez, recherchez et gérez vos dossiers clients.</p>
+            </div>
+
+            <button class="btn btn-primary" id="clientsNewButton">
+              + Ajouter un client
+            </button>
+          </div>
+
+          <div class="panel">
+
+            <div class="toolbar">
+
+              <div class="search-box">
+                <span>⌕</span>
+                <input
+                  type="search"
+                  id="clientSearch"
+                  placeholder="Rechercher par nom, prénom ou numéro membre..."
+                >
+                <button id="clearSearch" title="Effacer">×</button>
+              </div>
+
+              <select id="statusFilter" class="filter-select">
+                <option value="">Tous les statuts</option>
+                <option value="Actif">Actif</option>
+                <option value="Inactif">Inactif</option>
+                <option value="En attente">En attente</option>
+              </select>
+
+            </div>
+
+            <div id="clientsList" class="clients-grid">
+              <div class="empty-state">
+                Aucun client enregistré.
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- MAP -->
+        <section class="page" id="map">
+
+          <div class="page-heading">
+            <div>
+              <h2>Carte géographique</h2>
+              <p>Visualisez vos clients et votre position actuelle.</p>
+            </div>
+
+            <div class="map-actions">
+
+              <button id="myLocationButton" class="btn btn-primary">
+                ◎ Ma position
+              </button>
+
+              <button id="refreshMapButton" class="btn btn-secondary">
+                ↻ Actualiser
+              </button>
+
+            </div>
+          </div>
+
+          <div class="map-info-bar">
+            <div class="map-info-item">
+              <span class="map-dot client-dot"></span>
+              <span>Position des clients</span>
+            </div>
+
+            <div class="map-info-item">
+              <span class="map-dot user-dot"></span>
+              <span>Votre position actuelle</span>
+            </div>
+
+            <div class="map-info-help">
+              Vous pouvez déplacer un marqueur client pour modifier sa position.
+            </div>
+          </div>
+
+          <div class="map-panel">
+            <div id="map"></div>
+          </div>
+
+        </section>
+
+        <!-- VISITS -->
+        <section class="page" id="visits">
+
+          <div class="page-heading">
+            <div>
+              <h2>Historique des visites</h2>
+              <p>Retrouvez toutes les visites effectuées chez vos clients.</p>
+            </div>
+
+            <button class="btn btn-primary" id="newVisitButton">
+              + Nouvelle visite
+            </button>
+          </div>
+
+          <div class="panel">
+
+            <div id="visitsList" class="visits-list">
+              <div class="empty-state">
+                Aucune visite enregistrée.
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- =====================================
+       FORMULAIRE CLIENT
+  ====================================== -->
+
+  <dialog id="clientDialog" class="app-dialog">
+
+    <form id="clientForm" class="dialog-form">
+
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">DOSSIER CLIENT</span>
+          <h2 id="clientDialogTitle">Nouveau client</h2>
+          <p>Renseignez les informations du client.</p>
+        </div>
+
+        <button type="button" class="dialog-close" data-close="clientDialog">
+          ×
+        </button>
+      </div>
+
+      <div class="dialog-body">
+
+        <input type="hidden" id="clientId">
+
+        <div class="form-section">
+          <h3>Informations personnelles</h3>
+
+          <div class="form-grid">
+
+            <div class="form-group">
+              <label for="memberNumber">Numéro membre</label>
+              <input
+                type="text"
+                id="memberNumber"
+                placeholder="Ex : MEM-001"
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="phone">Téléphone</label>
+              <input
+                type="tel"
+                id="phone"
+                placeholder="Numéro de téléphone"
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="firstName">Prénom</label>
+              <input
+                type="text"
+                id="firstName"
+                required
+                placeholder="Prénom du client"
+              >
+            </div>
+
+            <div class="form-group">
+              <label for="lastName">Nom</label>
+              <input
+                type="text"
+                id="lastName"
+                required
+                placeholder="Nom du client"
+              >
+            </div>
+
+            <div class="form-group full-width">
+              <label for="address">Adresse</label>
+              <textarea
+                id="address"
+                rows="2"
+                placeholder="Adresse du domicile"
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="clientStatus">Statut</label>
+              <select id="clientStatus">
+                <option value="Actif">Actif</option>
+                <option value="Inactif">Inactif</option>
+                <option value="En attente">En attente</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="collaborator">Collaborateur responsable</label>
+              <input
+                type="text"
+                id="collaborator"
+                placeholder="Nom du collaborateur"
+              >
+            </div>
+
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Photographies</h3>
+
+          <div class="photo-grid">
+
+            <div class="form-group">
+              <label>Photo du client</label>
+
+              <label class="photo-upload" for="clientPhoto">
+                <span>＋</span>
+                <strong>Ajouter une photo</strong>
+                <small>Photo du client</small>
+              </label>
+
+              <input
+                type="file"
+                id="clientPhoto"
+                accept="image/*"
+                capture="user"
+                hidden
+              >
+
+              <div id="clientPhotoPreview" class="photo-preview"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Photo du domicile</label>
+
+              <label class="photo-upload" for="homePhoto">
+                <span>＋</span>
+                <strong>Ajouter une photo</strong>
+                <small>Photo du domicile</small>
+              </label>
+
+              <input
+                type="file"
+                id="homePhoto"
+                accept="image/*"
+                capture="environment"
+                hidden
+              >
+
+              <div id="homePhotoPreview" class="photo-preview"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h3>Localisation GPS</h3>
+
+          <div class="gps-panel">
+            <div>
+              <strong>Position du client</strong>
+              <p id="clientGpsStatus">Aucune position enregistrée.</p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-secondary"
+              id="clientGpsButton"
+            >
+              ◎ Obtenir GPS
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="dialog-footer">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          data-close="clientDialog"
+        >
+          Annuler
+        </button>
+
+        <button type="submit" class="btn btn-primary">
+          Enregistrer le client
+        </button>
+      </div>
+
+    </form>
+
+  </dialog>
+
+  <!-- =====================================
+       DÉTAIL CLIENT
+  ====================================== -->
+
+  <dialog id="detailDialog" class="app-dialog">
+
+    <div class="dialog-form">
+
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">DOSSIER CLIENT</span>
+          <h2>Informations du client</h2>
+        </div>
+
+        <button type="button" class="dialog-close" data-close="detailDialog">
+          ×
+        </button>
+      </div>
+
+      <div id="clientDetails" class="dialog-body"></div>
+
+      <div class="dialog-footer detail-actions">
+
+        <button
+          type="button"
+          class="btn btn-secondary"
+          id="showClientOnMapButton"
+        >
+          ◎ Afficher sur la carte
+        </button>
+
+        <button
+          type="button"
+          class="btn btn-secondary"
+          id="editClientButton"
+        >
+          Modifier
+        </button>
+
+        <button
+          type="button"
+          class="btn btn-primary"
+          id="addVisitForClientButton"
+        >
+          + Ajouter une visite
+        </button>
+
+      </div>
+
+    </div>
+
+  </dialog>
+
+  <!-- =====================================
+       FORMULAIRE VISITE
+  ====================================== -->
+
+  <dialog id="visitDialog" class="app-dialog">
+
+    <form id="visitForm" class="dialog-form">
+
+      <div class="dialog-header">
+        <div>
+          <span class="dialog-eyebrow">SUIVI TERRAIN</span>
+          <h2>Nouvelle visite</h2>
+          <p>Enregistrez les informations de votre visite.</p>
+        </div>
+
+        <button type="button" class="dialog-close" data-close="visitDialog">
+          ×
+        </button>
+      </div>
+
+      <div class="dialog-body">
+
+        <input type="hidden" id="visitId">
+
+        <div class="form-section">
+
+          <div class="form-grid">
+
+            <div class="form-group full-width">
+              <label for="visitClient">Client</label>
+              <select id="visitClient" required>
+                <option value="">Sélectionner un client</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="visitDate">Date de visite</label>
+              <input type="date" id="visitDate" required>
+            </div>
+
+            <div class="form-group">
+              <label for="visitResult">Résultat</label>
+              <select id="visitResult" required>
+                <option value="Effectuée">Effectuée</option>
+                <option value="Absent">Client absent</option>
+                <option value="À revoir">À revoir</option>
+                <option value="Refusée">Refusée</option>
+              </select>
+            </div>
+
+            <div class="form-group full-width">
+              <label for="visitObservations">Observations</label>
+              <textarea
+                id="visitObservations"
+                rows="4"
+                placeholder="Décrivez le déroulement de la visite..."
+              ></textarea>
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="form-section">
+          <h3>Photographies de la visite</h3>
+
+          <div class="form-group">
+            <label class="photo-upload" for="visitPhotos">
+              <span>＋</span>
+              <strong>Ajouter des photos</strong>
+              <small>Vous pouvez sélectionner plusieurs photos</small>
+            </label>
+
+            <input
+              type="file"
+              id="visitPhotos"
+              accept="image/*"
+              capture="environment"
+              multiple
+              hidden
+            >
+
+            <div id="visitPhotosPreview" class="photo-preview"></div>
+          </div>
+
+        </div>
+
+        <div class="form-section">
+          <h3>Position GPS de la visite</h3>
+
+          <div class="gps-panel">
+            <div>
+              <strong>Localisation de la visite</strong>
+              <p id="visitGpsStatus">Aucune position enregistrée.</p>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn-secondary"
+              id="visitGpsButton"
+            >
+              ◎ Obtenir GPS
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="dialog-footer">
+
+        <button
+          type="button"
+          class="btn btn-secondary"
+          data-close="visitDialog"
+        >
+          Annuler
+        </button>
+
+        <button type="submit" class="btn btn-primary">
+          Enregistrer la visite
+        </button>
+
+      </div>
+
+    </form>
+
+  </dialog>
+
+  <!-- NOTIFICATIONS -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- LIBRAIRIES -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- APPLICATION -->
+  <script src="app.js"></script>
+
+</body>
+</html>
