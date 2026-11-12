@@ -1143,13 +1143,15 @@ async function renderMap() {
           ${escapeHtml(client.address || "Adresse non renseignée")}
         </p>
 
-        <button onclick="openClient('${client.id}')">
-          Voir le dossier client
-        </button>
+        <div class="map-popup-actions">
+          <button onclick="openClient('${client.id}')">
+            Voir le dossier client
+          </button>
 
-        <button onclick="startClientLocationEdit('${client.id}')">
-          Déplacer ce marqueur
-        </button>
+          <button onclick="startClientLocationEdit('${client.id}')">
+            Déplacer ce marqueur
+          </button>
+        </div>
       </div>
     `);
 
@@ -1213,13 +1215,15 @@ function startClientLocationEdit(clientId) {
       <h3>Modification de position</h3>
       <p>Déplacez le marqueur vers le bon emplacement.</p>
 
-      <button onclick="saveClientLocation('${clientId}')">
-        ✓ Enregistrer la position
-      </button>
+      <div class="map-popup-actions">
+        <button onclick="saveClientLocation('${clientId}')">
+          ✓ Enregistrer la position
+        </button>
 
-      <button class="danger" onclick="cancelClientLocationEdit('${clientId}')">
-        Annuler le déplacement
-      </button>
+        <button class="danger" onclick="cancelClientLocationEdit('${clientId}')">
+          Annuler le déplacement
+        </button>
+      </div>
     </div>
   `).openPopup();
 
