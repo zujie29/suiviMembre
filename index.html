@@ -267,17 +267,6 @@
               <p>Visualisez vos clients et votre position actuelle.</p>
             </div>
 
-            <div class="map-actions">
-
-              <button id="myLocationButton" class="btn btn-primary">
-                ◎ Ma position
-              </button>
-
-              <button id="refreshMapButton" class="btn btn-secondary">
-                ↻ Actualiser
-              </button>
-
-            </div>
           </div>
 
           <div class="map-info-bar">
@@ -297,6 +286,22 @@
           </div>
 
           <div class="map-panel">
+            <div class="map-actions">
+
+              <button id="exitMapButton" class="btn btn-secondary">
+                ← Sortir de la carte
+              </button>
+
+              <button id="myLocationButton" class="btn btn-primary">
+                ◎ Ma position
+              </button>
+
+              <button id="refreshMapButton" class="btn btn-secondary">
+                ↻ Actualiser
+              </button>
+
+            </div>
+
             <div id="map"></div>
           </div>
 
@@ -504,6 +509,15 @@
       <div class="dialog-footer">
         <button
           type="button"
+          class="btn btn-danger"
+          id="deleteClientButtonForm"
+          hidden
+        >
+          🗑 Supprimer
+        </button>
+
+        <button
+          type="button"
           class="btn btn-secondary"
           data-close="clientDialog"
         >
@@ -541,6 +555,15 @@
       <div id="clientDetails" class="dialog-body"></div>
 
       <div class="dialog-footer detail-actions">
+
+        <button
+          type="button"
+          class="btn btn-danger"
+          id="deleteClientButtonDetail"
+          hidden
+        >
+          🗑 Supprimer le client
+        </button>
 
         <button
           type="button"

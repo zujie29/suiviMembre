@@ -25,6 +25,7 @@ let currentHomePhotoId = null;
 let currentVisitPhotoIds = [];
 let clientGps = null;
 let visitGps = null;
+let mapExitTarget = "dashboard";
 
 const $ = id => document.getElementById(id);
 
@@ -207,16 +208,63 @@ function deleteRecord(storeName, id) {
    4. GESTION DES PHOTOS
 ========================================= */
 
+async function compressImage(file, maxWidth = 1600, quality = 0.72) {
+  if (!file || !file.type || !file.type.startsWith("image/")) {
+    return file;
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onload = () => {
+        const scale = Math.min(1, maxWidth / image.width);
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+
+        const mimeType = file.type === "image/png" ? "image/jpeg" : file.type;
+
+        canvas.toBlob(blob => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+
+          resolve(blob.size < file.size ? blob : file);
+        }, mimeType, quality);
+      };
+
+      image.onerror = () => reject(new Error("Impossible de lire l'image pour la compresser."));
+      image.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error("Lecture de l'image impossible."));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function savePhoto(file) {
   if (!file) return null;
 
+  const compressedFile = await compressImage(file, 1600, 0.72);
   const id = createId();
 
   await saveRecord("photos", {
     id,
-    blob: file,
+    blob: compressedFile,
     name: file.name || "photo",
-    type: file.type || "image/jpeg",
+    type: compressedFile.type || file.type || "image/jpeg",
     createdAt: new Date().toISOString()
   });
 
@@ -244,7 +292,29 @@ async function deletePhoto(id) {
   await deleteRecord("photos", id);
 }
 
-async function displayPhotoPreview(photoId, containerId) {
+function createPhotoPreviewItem(src, altText, onRemove) {
+  const item = document.createElement("div");
+  item.className = "photo-preview-item";
+
+  const image = document.createElement("img");
+  image.src = src;
+  image.alt = altText;
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "photo-remove";
+  removeButton.textContent = "×";
+  removeButton.title = "Supprimer cette photo";
+  removeButton.setAttribute("aria-label", "Supprimer cette photo");
+  removeButton.addEventListener("click", onRemove);
+
+  item.appendChild(image);
+  item.appendChild(removeButton);
+
+  return item;
+}
+
+async function displayPhotoPreview(photoId, containerId, photoKey) {
   const container = $(containerId);
 
   if (!container) return;
@@ -257,16 +327,29 @@ async function displayPhotoPreview(photoId, containerId) {
 
   if (!url) return;
 
-  const image = document.createElement("img");
-  image.src = url;
-  image.alt = "Aperçu de la photo";
+  const item = createPhotoPreviewItem(url, "Aperçu de la photo", () => {
+    if (photoKey === "client") {
+      currentClientPhotoId = null;
+      $("clientPhoto").value = "";
+    }
 
-  image.onload = () => URL.revokeObjectURL(url);
+    if (photoKey === "home") {
+      currentHomePhotoId = null;
+      $("homePhoto").value = "";
+    }
 
-  container.appendChild(image);
+    displayPhotoPreview(null, containerId, photoKey);
+  });
+
+  imageOnLoadRevoke(item.querySelector("img"), url);
+  container.appendChild(item);
 }
 
-function previewSelectedFiles(input, containerId) {
+function imageOnLoadRevoke(image, url) {
+  image.onload = () => URL.revokeObjectURL(url);
+}
+
+function previewSelectedFiles(input, containerId, photoKey) {
   const container = $(containerId);
 
   if (!container) return;
@@ -275,14 +358,13 @@ function previewSelectedFiles(input, containerId) {
 
   Array.from(input.files || []).forEach(file => {
     const url = URL.createObjectURL(file);
-    const image = document.createElement("img");
+    const item = createPhotoPreviewItem(url, "Nouvelle photo", () => {
+      input.value = "";
+      container.innerHTML = "";
+    });
 
-    image.src = url;
-    image.alt = "Nouvelle photo";
-
-    image.onload = () => URL.revokeObjectURL(url);
-
-    container.appendChild(image);
+    imageOnLoadRevoke(item.querySelector("img"), url);
+    container.appendChild(item);
   });
 }
 
@@ -298,6 +380,14 @@ const pageTitles = {
 };
 
 function navigate(pageName) {
+  const activePage = document.querySelector(".page.active");
+
+  if (pageName === "map" && activePage && activePage.id !== "map") {
+    mapExitTarget = activePage.id || "dashboard";
+  } else if (pageName !== "map") {
+    mapExitTarget = pageName;
+  }
+
   const page = $(pageName);
 
   if (!page) return;
@@ -528,11 +618,59 @@ function resetClientForm() {
 
   $("clientGpsStatus").textContent = "Aucune position enregistrée.";
   $("clientDialogTitle").textContent = "Nouveau client";
+  $("deleteClientButtonForm").hidden = true;
+  $("deleteClientButtonDetail").hidden = true;
 }
 
 function openNewClient() {
   resetClientForm();
   $("clientDialog").showModal();
+}
+
+async function deleteClient(clientId) {
+  const client = await getById("clients", clientId);
+
+  if (!client) {
+    showMessage("Client introuvable.", "error");
+    return;
+  }
+
+  const confirmed = confirm(
+    `Voulez-vous vraiment supprimer le client ${getClientName(client)} ?\nCette action supprimera aussi ses photos et ses visites.`
+  );
+
+  if (!confirmed) return;
+
+  const [visits, allPhotos] = await Promise.all([
+    getAll("visits"),
+    getAll("photos")
+  ]);
+
+  const clientVisits = visits.filter(visit => visit.clientId === clientId);
+
+  for (const visit of clientVisits) {
+    for (const photoId of visit.photoIds || []) {
+      await deletePhoto(photoId);
+    }
+
+    await deleteRecord("visits", visit.id);
+  }
+
+  for (const photoId of [client.photoId, client.homePhotoId]) {
+    if (photoId) {
+      await deletePhoto(photoId);
+    }
+  }
+
+  await deleteRecord("clients", clientId);
+
+  $("detailDialog")?.close();
+  $("clientDialog")?.close();
+
+  showMessage("Client supprimé avec succès.", "info");
+  selectedClientId = null;
+
+  await refreshApplication();
 }
 
 async function openEditClient(clientId) {
@@ -558,13 +696,15 @@ async function openEditClient(clientId) {
   currentHomePhotoId = client.homePhotoId || null;
   clientGps = client.gps || null;
 
+  $("deleteClientButtonForm").hidden = false;
+
   if (clientGps) {
     $("clientGpsStatus").textContent =
       `${clientGps.lat.toFixed(6)}, ${clientGps.lng.toFixed(6)}`;
   }
 
-  await displayPhotoPreview(currentClientPhotoId, "clientPhotoPreview");
-  await displayPhotoPreview(currentHomePhotoId, "homePhotoPreview");
+  await displayPhotoPreview(currentClientPhotoId, "clientPhotoPreview", "client");
+  await displayPhotoPreview(currentHomePhotoId, "homePhotoPreview", "home");
 
   $("clientDialogTitle").textContent = "Modifier le client";
   $("clientDialog").showModal();
@@ -612,13 +752,11 @@ async function submitClientForm(event) {
 
     await saveRecord("clients", client);
 
-    if (newClientPhoto && oldClient?.photoId &&
-        oldClient.photoId !== currentClientPhotoId) {
+    if (oldClient?.photoId && oldClient.photoId !== client.photoId) {
       await deletePhoto(oldClient.photoId);
     }
 
-    if (newHomePhoto && oldClient?.homePhotoId &&
-        oldClient.homePhotoId !== currentHomePhotoId) {
+    if (oldClient?.homePhotoId && oldClient.homePhotoId !== client.homePhotoId) {
       await deletePhoto(oldClient.homePhotoId);
     }
 
@@ -927,6 +1065,7 @@ async function openClient(clientId) {
   `;
 
   $("detailDialog").showModal();
+  $("deleteClientButtonDetail").hidden = false;
 }
 
 /* =========================================
@@ -1408,6 +1547,131 @@ async function exportBackup() {
    17. IMPORTATION ZIP AVEC FUSION
 ========================================= */
 
+function getRecordTimestamp(record) {
+  if (!record) return 0;
+
+  const rawValue = record.updatedAt || record.createdAt || record.date || record.exportedAt || 0;
+  const parsed = new Date(rawValue).getTime();
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function shouldReplaceImportedRecord(current, incoming) {
+  if (!current) return true;
+
+  const currentTime = getRecordTimestamp(current);
+  const incomingTime = getRecordTimestamp(incoming);
+
+  if (incomingTime > currentTime) return true;
+  if (incomingTime === currentTime) {
+    return JSON.stringify(incoming) !== JSON.stringify(current);
+  }
+
+  return false;
+}
+
+async function replaceDatabaseFromBackup(database, zip) {
+  const clearStores = [
+    dbRequest("photos", "readwrite", store => store.clear()),
+    dbRequest("clients", "readwrite", store => store.clear()),
+    dbRequest("visits", "readwrite", store => store.clear())
+  ];
+
+  await Promise.all(clearStores);
+
+  const importedPhotos = database.photos || [];
+
+  for (const photo of importedPhotos) {
+    const photoFile = zip.file(`photos/${photo.id}`);
+
+    if (!photoFile) continue;
+
+    const blob = await photoFile.async("blob");
+
+    await saveRecord("photos", {
+      id: photo.id,
+      blob,
+      name: photo.name || "photo",
+      type: photo.type || blob.type || "image/jpeg",
+      createdAt: photo.createdAt || new Date().toISOString(),
+      updatedAt: photo.updatedAt || photo.createdAt || new Date().toISOString()
+    });
+  }
+
+  for (const client of database.clients || []) {
+    await saveRecord("clients", {
+      ...client,
+      updatedAt: client.updatedAt || client.createdAt || new Date().toISOString()
+    });
+  }
+
+  for (const visit of database.visits || []) {
+    await saveRecord("visits", {
+      ...visit,
+      updatedAt: visit.updatedAt || visit.createdAt || new Date().toISOString()
+    });
+  }
+}
+
+async function mergeDatabaseFromBackup(database, zip) {
+  const [existingClients, existingVisits, existingPhotos] = await Promise.all([
+    getAll("clients"),
+    getAll("visits"),
+    getAll("photos")
+  ]);
+
+  const clientsMap = new Map(existingClients.map(item => [item.id, item]));
+  const visitsMap = new Map(existingVisits.map(item => [item.id, item]));
+  const photosMap = new Map(existingPhotos.map(item => [item.id, item]));
+
+  const importedPhotos = database.photos || [];
+
+  for (const photo of importedPhotos) {
+    const current = photosMap.get(photo.id);
+    const photoFile = zip.file(`photos/${photo.id}`);
+
+    if (!photoFile) continue;
+
+    const blob = await photoFile.async("blob");
+    const importedPhoto = {
+      id: photo.id,
+      blob,
+      name: photo.name || "photo",
+      type: photo.type || blob.type || "image/jpeg",
+      createdAt: photo.createdAt || new Date().toISOString(),
+      updatedAt: photo.updatedAt || photo.createdAt || new Date().toISOString()
+    };
+
+    if (!current || shouldReplaceImportedRecord(current, importedPhoto)) {
+      await saveRecord("photos", importedPhoto);
+    }
+  }
+
+  for (const client of database.clients || []) {
+    const current = clientsMap.get(client.id);
+    const importedClient = {
+      ...client,
+      updatedAt: client.updatedAt || client.createdAt || new Date().toISOString()
+    };
+
+    if (!current || shouldReplaceImportedRecord(current, importedClient)) {
+      await saveRecord("clients", importedClient);
+    }
+  }
+
+  for (const visit of database.visits || []) {
+    const current = visitsMap.get(visit.id);
+    const importedVisit = {
+      ...visit,
+      updatedAt: visit.updatedAt || visit.createdAt || new Date().toISOString()
+    };
+
+    if (!current || shouldReplaceImportedRecord(current, importedVisit)) {
+      await saveRecord("visits", importedVisit);
+    }
+  }
+}
+
 async function importBackup(event) {
   const file = event.target.files?.[0];
 
@@ -1428,53 +1692,36 @@ async function importBackup(event) {
       throw new Error("Format de sauvegarde invalide.");
     }
 
-    const confirmed = confirm(
-      `Importer ${database.clients.length} client(s) et ${database.visits.length} visite(s) ?\n\nLes données existantes seront conservées. Les éléments portant le même identifiant seront mis à jour.`
-    );
+    const existingClients = await getAll("clients");
+    const existingVisits = await getAll("visits");
+    const hasExistingData = existingClients.length || existingVisits.length;
 
-    if (!confirmed) {
-      event.target.value = "";
-      return;
-    }
+    let shouldReplace = false;
 
-    const importedPhotos = database.photos || [];
+    if (hasExistingData) {
+     shouldReplace = !confirm(
+        "Importer la base sélectionnée ?\n\n- OK = mettre à jour la base existante en comparant les changements\n- Annuler = remplacer entièrement la base locale"
+      );
+   }
 
-    for (const photo of importedPhotos) {
-      const photoFile = zip.file(`photos/${photo.id}`);
+   if (shouldReplace) {
+     await replaceDatabaseFromBackup(database, zip);
+     showMessage("Base locale remplacée par la sauvegarde importée.", "info");
+   } else {
+     await mergeDatabaseFromBackup(database, zip);
+     showMessage("Base mise à jour avec les nouvelles données importées.", "success");
+   }
 
-      if (!photoFile) continue;
-
-      const blob = await photoFile.async("blob");
-
-      await saveRecord("photos", {
-        id: photo.id,
-        blob,
-        name: photo.name || "photo",
-        type: photo.type || blob.type || "image/jpeg",
-        createdAt: photo.createdAt || new Date().toISOString()
-      });
-    }
-
-    for (const client of database.clients) {
-      await saveRecord("clients", client);
-    }
-
-    for (const visit of database.visits) {
-      await saveRecord("visits", visit);
-    }
-
-    showMessage("Sauvegarde importée avec succès.");
-
-    await refreshApplication();
-  } catch (error) {
-    console.error(error);
-    showMessage(
-      `Importation impossible : ${error.message}`,
-      "error"
-    );
-  } finally {
-    event.target.value = "";
-  }
+   await refreshApplication();
+ } catch (error) {
+   console.error(error);
+   showMessage(
+     `Importation impossible : ${error.message}`,
+     "error"
+   );
+ } finally {
+   event.target.value = "";
+ }
 }
 
 /* =========================================
@@ -1482,15 +1729,15 @@ async function importBackup(event) {
 ========================================= */
 
 async function refreshApplication() {
-  await Promise.all([
-    renderDashboard(),
-    renderClients(),
-    renderVisits()
-  ]);
+ await Promise.all([
+   renderDashboard(),
+   renderClients(),
+   renderVisits()
+ ]);
 
-  if (map) {
-    await renderMap();
-  }
+ if (map) {
+   await renderMap();
+ }
 }
 
 /* =========================================
@@ -1531,14 +1778,28 @@ function initializeEvents() {
   $("clientGpsButton").addEventListener("click", getClientGPS);
 
   $("clientPhoto").addEventListener("change", () => {
-    previewSelectedFiles($("clientPhoto"), "clientPhotoPreview");
+    previewSelectedFiles($("clientPhoto"), "clientPhotoPreview", "client");
   });
 
   $("homePhoto").addEventListener("change", () => {
-    previewSelectedFiles($("homePhoto"), "homePhotoPreview");
+    previewSelectedFiles($("homePhoto"), "homePhotoPreview", "home");
   });
 
   /* Dossier client */
+
+  $("deleteClientButtonForm").addEventListener("click", async () => {
+    const id = $("clientId").value;
+
+    if (!id) return;
+
+    await deleteClient(id);
+  });
+
+  $("deleteClientButtonDetail").addEventListener("click", async () => {
+    if (!selectedClientId) return;
+
+    await deleteClient(selectedClientId);
+  });
 
   $("editClientButton").addEventListener("click", async () => {
     const id = selectedClientId;
@@ -1569,6 +1830,10 @@ function initializeEvents() {
   $("refreshMapButton").addEventListener("click", async () => {
     await renderMap();
     showMessage("Carte actualisée.", "info");
+  });
+
+  $("exitMapButton").addEventListener("click", () => {
+    navigate(mapExitTarget || "dashboard");
   });
 
   $("myLocationButton").addEventListener("click", centerOnUserPosition);
